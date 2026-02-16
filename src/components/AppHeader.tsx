@@ -20,8 +20,8 @@ export function AppHeader() {
   const { role, setRole } = useUser();
 
   return (
-    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6 sticky top-0 z-20">
-      <h2 className="text-lg font-semibold text-foreground">Gestão Operacional</h2>
+    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
+      <h2 className="text-lg font-semibold text-foreground ml-12 md:ml-0">Gestão Operacional</h2>
 
       <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted transition-colors text-sm font-medium">
