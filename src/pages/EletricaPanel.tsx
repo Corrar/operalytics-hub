@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useUser } from "@/contexts/UserContext";
 import { ProgressBar } from "@/components/ProgressBar";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Accordion,
@@ -9,8 +8,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Shield, CheckCircle2 } from "lucide-react";
+import { Shield, CheckCircle2, Plus, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CrudDialog, DeleteDialog, type FieldConfig } from "@/components/CrudDialog";
 
 interface CheckItem {
   id: string;
@@ -24,68 +24,69 @@ interface CheckSection {
   items: CheckItem[];
 }
 
-const initialSections: CheckSection[] = [
-  {
-    id: "s1",
-    title: "Fiação e Cabos",
-    items: [
-      { id: "1", label: "Verificar isolamento dos cabos principais", checked: true },
-      { id: "2", label: "Testar continuidade de fios", checked: true },
-      { id: "3", label: "Inspecionar emendas e conexões", checked: false },
-      { id: "4", label: "Verificar aterramento geral", checked: false },
-    ],
-  },
-  {
-    id: "s2",
-    title: "Painéis Elétricos",
-    items: [
-      { id: "5", label: "Verificar disjuntores", checked: true },
-      { id: "6", label: "Testar relés de proteção", checked: false },
-      { id: "7", label: "Limpar contatos do painel", checked: false },
-    ],
-  },
-  {
-    id: "s3",
-    title: "Motores e Acionamentos",
-    items: [
-      { id: "8", label: "Medir corrente nominal dos motores", checked: true },
-      { id: "9", label: "Verificar vibração nos mancais", checked: true },
-      { id: "10", label: "Testar inversores de frequência", checked: false },
-      { id: "11", label: "Inspecionar sistema de ventilação", checked: false },
-      { id: "12", label: "Verificar acoplamentos", checked: false },
-    ],
-  },
-  {
-    id: "s4",
-    title: "Iluminação e Emergência",
-    items: [
-      { id: "13", label: "Testar iluminação de emergência", checked: true },
-      { id: "14", label: "Verificar baterias de backup", checked: false },
-      { id: "15", label: "Inspecionar luminárias industriais", checked: false },
-    ],
-  },
+let nextSectionId = 5;
+let nextItemId = 16;
+
+const sectionFields: FieldConfig[] = [
+  { name: "title", label: "Nome da Seção", type: "text", required: true },
+];
+
+const itemFields: FieldConfig[] = [
+  { name: "label", label: "Descrição do Item", type: "text", required: true },
 ];
 
 export default function EletricaPanel() {
-  const { canEdit } = useUser();
-  const editable = canEdit("eletrica");
-  const [sections, setSections] = useState(initialSections);
+  const [sections, setSections] = useState<CheckSection[]>([
+    {
+      id: "s1", title: "Fiação e Cabos",
+      items: [
+        { id: "1", label: "Verificar isolamento dos cabos principais", checked: true },
+        { id: "2", label: "Testar continuidade de fios", checked: true },
+        { id: "3", label: "Inspecionar emendas e conexões", checked: false },
+        { id: "4", label: "Verificar aterramento geral", checked: false },
+      ],
+    },
+    {
+      id: "s2", title: "Painéis Elétricos",
+      items: [
+        { id: "5", label: "Verificar disjuntores", checked: true },
+        { id: "6", label: "Testar relés de proteção", checked: false },
+        { id: "7", label: "Limpar contatos do painel", checked: false },
+      ],
+    },
+    {
+      id: "s3", title: "Motores e Acionamentos",
+      items: [
+        { id: "8", label: "Medir corrente nominal dos motores", checked: true },
+        { id: "9", label: "Verificar vibração nos mancais", checked: true },
+        { id: "10", label: "Testar inversores de frequência", checked: false },
+        { id: "11", label: "Inspecionar sistema de ventilação", checked: false },
+        { id: "12", label: "Verificar acoplamentos", checked: false },
+      ],
+    },
+    {
+      id: "s4", title: "Iluminação e Emergência",
+      items: [
+        { id: "13", label: "Testar iluminação de emergência", checked: true },
+        { id: "14", label: "Verificar baterias de backup", checked: false },
+        { id: "15", label: "Inspecionar luminárias industriais", checked: false },
+      ],
+    },
+  ]);
+
+  const [sectionDialog, setSectionDialog] = useState<{ open: boolean; editing?: CheckSection }>({ open: false });
+  const [itemDialog, setItemDialog] = useState<{ open: boolean; sectionId: string; editing?: CheckItem }>({ open: false, sectionId: "" });
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "section" | "item"; sectionId: string; itemId?: string; name: string } | null>(null);
 
   const allItems = sections.flatMap((s) => s.items);
   const checkedCount = allItems.filter((i) => i.checked).length;
-  const totalProgress = Math.round((checkedCount / allItems.length) * 100);
+  const totalProgress = allItems.length ? Math.round((checkedCount / allItems.length) * 100) : 0;
 
   const toggleItem = (sectionId: string, itemId: string) => {
-    if (!editable) return;
     setSections((prev) =>
       prev.map((s) =>
         s.id === sectionId
-          ? {
-              ...s,
-              items: s.items.map((i) =>
-                i.id === itemId ? { ...i, checked: !i.checked } : i
-              ),
-            }
+          ? { ...s, items: s.items.map((i) => i.id === itemId ? { ...i, checked: !i.checked } : i) }
           : s
       )
     );
@@ -93,7 +94,33 @@ export default function EletricaPanel() {
 
   const getSectionProgress = (section: CheckSection) => {
     const checked = section.items.filter((i) => i.checked).length;
-    return Math.round((checked / section.items.length) * 100);
+    return section.items.length ? Math.round((checked / section.items.length) * 100) : 0;
+  };
+
+  const handleSectionSubmit = (data: Record<string, string | number>) => {
+    if (sectionDialog.editing) {
+      setSections((prev) => prev.map((s) => s.id === sectionDialog.editing!.id ? { ...s, title: String(data.title) } : s));
+    } else {
+      setSections((prev) => [...prev, { id: `s${nextSectionId++}`, title: String(data.title), items: [] }]);
+    }
+  };
+
+  const handleItemSubmit = (data: Record<string, string | number>) => {
+    const sid = itemDialog.sectionId;
+    if (itemDialog.editing) {
+      setSections((prev) => prev.map((s) => s.id === sid ? { ...s, items: s.items.map((i) => i.id === itemDialog.editing!.id ? { ...i, label: String(data.label) } : i) } : s));
+    } else {
+      setSections((prev) => prev.map((s) => s.id === sid ? { ...s, items: [...s.items, { id: String(nextItemId++), label: String(data.label), checked: false }] } : s));
+    }
+  };
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.type === "section") {
+      setSections((prev) => prev.filter((s) => s.id !== deleteTarget.sectionId));
+    } else {
+      setSections((prev) => prev.map((s) => s.id === deleteTarget.sectionId ? { ...s, items: s.items.filter((i) => i.id !== deleteTarget.itemId) } : s));
+    }
   };
 
   return (
@@ -103,11 +130,9 @@ export default function EletricaPanel() {
           <h1 className="text-2xl font-bold text-foreground">Elétrica</h1>
           <p className="text-sm text-muted-foreground">Checklists Técnicos</p>
         </div>
-        {!editable && (
-          <Badge variant="outline" className="border-accent text-accent-foreground bg-accent/10">
-            Somente Leitura
-          </Badge>
-        )}
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setSectionDialog({ open: true })}>
+          <Plus className="w-3.5 h-3.5" /> Nova Seção
+        </Button>
       </div>
 
       <div className="bg-card rounded-2xl p-5 card-shadow">
@@ -142,33 +167,39 @@ export default function EletricaPanel() {
                     )}>
                       {sProgress}%
                     </span>
-                    {sProgress === 100 && <CheckCircle2 className="w-4 h-4 text-success ml-auto" />}
+                    {sProgress === 100 && <CheckCircle2 className="w-4 h-4 text-success" />}
+                    <div className="ml-auto flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setItemDialog({ open: true, sectionId: section.id })}>
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setSectionDialog({ open: true, editing: section })}>
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={() => setDeleteTarget({ type: "section", sectionId: section.id, name: section.title })}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pb-3">
                   <div className="space-y-2">
                     {section.items.map((item) => (
-                      <label
-                        key={item.id}
-                        className={cn(
-                          "flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer",
-                          item.checked ? "bg-success/5" : "hover:bg-muted/50",
-                          !editable && "cursor-default"
-                        )}
-                      >
-                        <Checkbox
-                          checked={item.checked}
-                          onCheckedChange={() => toggleItem(section.id, item.id)}
-                          disabled={!editable}
-                        />
-                        <span className={cn(
-                          "text-sm",
-                          item.checked ? "text-muted-foreground line-through" : "text-foreground"
-                        )}>
+                      <div key={item.id} className={cn("flex items-center gap-3 p-2.5 rounded-lg transition-colors", item.checked ? "bg-success/5" : "hover:bg-muted/50")}>
+                        <Checkbox checked={item.checked} onCheckedChange={() => toggleItem(section.id, item.id)} />
+                        <span className={cn("text-sm flex-1", item.checked ? "text-muted-foreground line-through" : "text-foreground")}>
                           {item.label}
                         </span>
-                      </label>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setItemDialog({ open: true, sectionId: section.id, editing: item })}>
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={() => setDeleteTarget({ type: "item", sectionId: section.id, itemId: item.id, name: item.label })}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
                     ))}
+                    {section.items.length === 0 && (
+                      <p className="text-xs text-muted-foreground italic py-2">Nenhum item. Clique em + para adicionar.</p>
+                    )}
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -176,6 +207,10 @@ export default function EletricaPanel() {
           })}
         </Accordion>
       </div>
+
+      <CrudDialog open={sectionDialog.open} onClose={() => setSectionDialog({ open: false })} onSubmit={handleSectionSubmit} title={sectionDialog.editing ? "Editar Seção" : "Nova Seção"} fields={sectionFields} initialData={sectionDialog.editing as any} submitLabel={sectionDialog.editing ? "Atualizar" : "Criar"} />
+      <CrudDialog open={itemDialog.open} onClose={() => setItemDialog({ open: false, sectionId: "" })} onSubmit={handleItemSubmit} title={itemDialog.editing ? "Editar Item" : "Novo Item"} fields={itemFields} initialData={itemDialog.editing as any} submitLabel={itemDialog.editing ? "Atualizar" : "Criar"} />
+      <DeleteDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} itemName={deleteTarget?.name || ""} />
     </div>
   );
 }
