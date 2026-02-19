@@ -1,95 +1,96 @@
 import { useState } from "react";
 import { ProgressBar } from "@/components/ProgressBar";
-import { Gauge } from "@/components/Gauge";
 import { Button } from "@/components/ui/button";
-import { Play, RotateCw, Plus, Pencil, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { CrudDialog, DeleteDialog, type FieldConfig } from "@/components/CrudDialog";
 
-interface WashCycle {
+interface KanbanCard {
   id: number;
-  label: string;
-  phase: string;
+  title: string;
+  priority: "alta" | "media" | "baixa";
   progress: number;
-  temp: number;
-  chemical: number;
+  assignee: string;
 }
 
-interface WaitingLot {
-  id: number;
-  name: string;
-  items: number;
-}
+type Column = "aguardando" | "lavando" | "concluido";
 
-let nextCycleId = 4;
-let nextLotId = 4;
+let nextId = 7;
 
-const cycleFields: FieldConfig[] = [
-  { name: "label", label: "Nome", type: "text", required: true },
-  { name: "phase", label: "Fase", type: "select", options: [
-    { value: "Lavagem", label: "Lavagem" },
-    { value: "Enxágue", label: "Enxágue" },
-    { value: "Centrifugação", label: "Centrifugação" },
-    { value: "Secagem", label: "Secagem" },
+const cardFields: FieldConfig[] = [
+  { name: "title", label: "Título", type: "text", required: true },
+  { name: "assignee", label: "Responsável", type: "text", required: true },
+  { name: "priority", label: "Prioridade", type: "select", options: [
+    { value: "alta", label: "Alta" },
+    { value: "media", label: "Média" },
+    { value: "baixa", label: "Baixa" },
   ]},
   { name: "progress", label: "Progresso (%)", type: "number" },
-  { name: "temp", label: "Temperatura (°C)", type: "number" },
-  { name: "chemical", label: "Químico (%)", type: "number" },
 ];
 
-const lotFields: FieldConfig[] = [
-  { name: "name", label: "Nome do Lote", type: "text", required: true },
-  { name: "items", label: "Quantidade de Peças", type: "number", required: true },
-];
+const priorityColors: Record<string, string> = {
+  alta: "bg-destructive/10 text-destructive border-destructive/20",
+  media: "bg-accent/15 text-accent-foreground border-accent/30",
+  baixa: "bg-primary/10 text-primary border-primary/20",
+};
+
+const columnMeta: Record<Column, { label: string; color: string }> = {
+  aguardando: { label: "Aguardando", color: "bg-muted-foreground" },
+  lavando: { label: "Lavando", color: "bg-primary" },
+  concluido: { label: "Concluído", color: "bg-success" },
+};
 
 export default function LavadoraPanel() {
-  const [cycles, setCycles] = useState<WashCycle[]>([
-    { id: 1, label: "Lavadora 01", phase: "Enxágue", progress: 85, temp: 72, chemical: 45 },
-    { id: 2, label: "Lavadora 02", phase: "Lavagem", progress: 42, temp: 88, chemical: 78 },
-    { id: 3, label: "Lavadora 03", phase: "Centrifugação", progress: 95, temp: 35, chemical: 12 },
-  ]);
-  const [lots, setLots] = useState<WaitingLot[]>([
-    { id: 1, name: "Lote #A12", items: 45 },
-    { id: 2, name: "Lote #B08", items: 30 },
-    { id: 3, name: "Lote #C19", items: 60 },
-  ]);
-  const [cycleDialog, setCycleDialog] = useState<{ open: boolean; editing?: WashCycle }>({ open: false });
-  const [lotDialog, setLotDialog] = useState<{ open: boolean; editing?: WaitingLot }>({ open: false });
-  const [deleteTarget, setDeleteTarget] = useState<{ type: "cycle" | "lot"; id: number; name: string } | null>(null);
+  const [cards, setCards] = useState<Record<Column, KanbanCard[]>>({
+    aguardando: [
+      { id: 1, title: "Lote #A12 - 45 peças", priority: "alta", progress: 0, assignee: "Carlos" },
+      { id: 2, title: "Lote #B08 - 30 peças", priority: "media", progress: 0, assignee: "Ana" },
+    ],
+    lavando: [
+      { id: 3, title: "Lavadora 01 - Enxágue", priority: "alta", progress: 60, assignee: "Pedro" },
+      { id: 4, title: "Lavadora 02 - Centrifugação", priority: "media", progress: 85, assignee: "Maria" },
+      { id: 5, title: "Lavadora 03 - Lavagem", priority: "baixa", progress: 35, assignee: "João" },
+    ],
+    concluido: [
+      { id: 6, title: "Lote #C19 - 60 peças", priority: "media", progress: 100, assignee: "Lucas" },
+    ],
+  });
+  const [dragging, setDragging] = useState<{ card: KanbanCard; from: Column } | null>(null);
+  const [dialog, setDialog] = useState<{ open: boolean; column: Column; editing?: KanbanCard }>({ open: false, column: "aguardando" });
+  const [deleteTarget, setDeleteTarget] = useState<{ col: Column; id: number; name: string } | null>(null);
 
-  const totalProgress = cycles.length ? Math.round(cycles.reduce((a, c) => a + c.progress, 0) / cycles.length) : 0;
+  const allCards = [...cards.aguardando, ...cards.lavando, ...cards.concluido];
+  const totalProgress = allCards.length ? Math.round(allCards.reduce((a, c) => a + c.progress, 0) / allCards.length) : 0;
 
-  const advanceCycle = (id: number) => {
-    setCycles((prev) => prev.map((c) => c.id === id ? { ...c, progress: Math.min(c.progress + 10, 100) } : c));
+  const moveCard = (cardId: number, from: Column, to: Column) => {
+    if (from === to) return;
+    const card = cards[from].find((c) => c.id === cardId);
+    if (!card) return;
+    const updated = { ...card };
+    if (to === "concluido") updated.progress = 100;
+    if (to === "lavando" && updated.progress === 0) updated.progress = 25;
+    if (to === "aguardando") updated.progress = 0;
+    setCards((prev) => ({
+      ...prev,
+      [from]: prev[from].filter((c) => c.id !== cardId),
+      [to]: [...prev[to], updated],
+    }));
   };
 
-  const handleCycleSubmit = (data: Record<string, string | number>) => {
-    const cycle: WashCycle = {
-      id: cycleDialog.editing?.id || nextCycleId++,
-      label: String(data.label),
-      phase: String(data.phase || "Lavagem"),
+  const handleSubmit = (data: Record<string, string | number>) => {
+    const newCard: KanbanCard = {
+      id: dialog.editing?.id || nextId++,
+      title: String(data.title),
+      assignee: String(data.assignee),
+      priority: (data.priority as KanbanCard["priority"]) || "media",
       progress: Number(data.progress) || 0,
-      temp: Number(data.temp) || 0,
-      chemical: Number(data.chemical) || 0,
     };
-    if (cycleDialog.editing) {
-      setCycles((prev) => prev.map((c) => c.id === cycleDialog.editing!.id ? cycle : c));
+    if (dialog.editing) {
+      const col = (Object.keys(cards) as Column[]).find((c) => cards[c].some((k) => k.id === dialog.editing!.id))!;
+      setCards((prev) => ({ ...prev, [col]: prev[col].map((c) => c.id === dialog.editing!.id ? newCard : c) }));
     } else {
-      setCycles((prev) => [...prev, cycle]);
+      setCards((prev) => ({ ...prev, [dialog.column]: [...prev[dialog.column], newCard] }));
     }
-  };
-
-  const handleLotSubmit = (data: Record<string, string | number>) => {
-    if (lotDialog.editing) {
-      setLots((prev) => prev.map((l) => l.id === lotDialog.editing!.id ? { ...l, name: String(data.name), items: Number(data.items) } : l));
-    } else {
-      setLots((prev) => [...prev, { id: nextLotId++, name: String(data.name), items: Number(data.items) }]);
-    }
-  };
-
-  const handleDelete = () => {
-    if (!deleteTarget) return;
-    if (deleteTarget.type === "cycle") setCycles((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-    else setLots((prev) => prev.filter((l) => l.id !== deleteTarget.id));
   };
 
   return (
@@ -97,75 +98,78 @@ export default function LavadoraPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Lavadora</h1>
-          <p className="text-sm text-muted-foreground">Ciclos e Monitoramento</p>
+          <p className="text-sm text-muted-foreground">Quadro Kanban</p>
         </div>
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCycleDialog({ open: true })}>
-          <Plus className="w-3.5 h-3.5" /> Novo Ciclo
-        </Button>
       </div>
 
       <ProgressBar value={totalProgress} showLabel size="lg" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {cycles.map((cycle) => (
-          <div key={cycle.id} className="bg-card rounded-2xl p-5 card-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">{cycle.label}</h3>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-primary font-medium">{cycle.phase}</span>
-                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setCycleDialog({ open: true, editing: cycle })}>
-                  <Pencil className="w-3 h-3" />
-                </Button>
-                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={() => setDeleteTarget({ type: "cycle", id: cycle.id, name: cycle.label })}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {(Object.keys(columnMeta) as Column[]).map((col) => (
+          <div
+            key={col}
+            className={cn("bg-muted/30 rounded-2xl p-4 min-h-[400px] transition-colors", dragging && "ring-2 ring-primary/20 ring-dashed")}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragging) { moveCard(dragging.card.id, dragging.from, col); setDragging(null); } }}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <div className={cn("w-2.5 h-2.5 rounded-full", columnMeta[col].color)} />
+              <h3 className="text-sm font-semibold text-foreground">{columnMeta[col].label}</h3>
+              <span className="text-xs text-muted-foreground ml-auto">{cards[col].length}</span>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setDialog({ open: true, column: col })}>
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
             </div>
-            <ProgressBar value={cycle.progress} showLabel variant={cycle.progress >= 90 ? "success" : "primary"} />
-            <div className="flex justify-around">
-              <Gauge value={cycle.temp} max={100} label="Temperatura" unit="°C" size={90} />
-              <Gauge value={cycle.chemical} max={100} label="Químico" unit="%" size={90} />
+
+            <div className="space-y-3">
+              {cards[col].map((card) => (
+                <div
+                  key={card.id}
+                  draggable
+                  onDragStart={() => setDragging({ card, from: col })}
+                  className="bg-card rounded-xl p-4 card-shadow hover:card-shadow-hover transition-all duration-200 cursor-grab active:cursor-grabbing"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-sm font-medium text-foreground flex-1">{card.title}</p>
+                    <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium border ml-2 shrink-0", priorityColors[card.priority])}>
+                      {card.priority}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">{card.assignee}</p>
+                  <ProgressBar value={card.progress} size="sm" variant={card.progress === 100 ? "success" : "primary"} />
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-[10px] text-muted-foreground">{card.progress}%</p>
+                    <div className="flex gap-0.5">
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setDialog({ open: true, column: col, editing: card })}>
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={() => setDeleteTarget({ col, id: card.id, name: card.title })}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-            <Button size="sm" variant="outline" className="w-full gap-2" onClick={() => advanceCycle(cycle.id)}>
-              <RotateCw className="w-3.5 h-3.5" /> Avançar Ciclo
-            </Button>
           </div>
         ))}
       </div>
 
-      <div className="bg-card rounded-2xl p-5 card-shadow">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-semibold text-foreground">Lotes Aguardando Secagem</h3>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLotDialog({ open: true })}>
-            <Plus className="w-3.5 h-3.5" /> Novo Lote
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {lots.map((lot) => (
-            <div key={lot.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
-              <div>
-                <p className="text-sm font-medium text-foreground">{lot.name}</p>
-                <p className="text-xs text-muted-foreground">{lot.items} peças</p>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button size="sm" variant="ghost" className="gap-1.5 text-primary">
-                  <Play className="w-3.5 h-3.5" /> Iniciar
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setLotDialog({ open: true, editing: lot })}>
-                  <Pencil className="w-3.5 h-3.5" />
-                </Button>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => setDeleteTarget({ type: "lot", id: lot.id, name: lot.name })}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <CrudDialog open={cycleDialog.open} onClose={() => setCycleDialog({ open: false })} onSubmit={handleCycleSubmit} title={cycleDialog.editing ? "Editar Ciclo" : "Novo Ciclo"} fields={cycleFields} initialData={cycleDialog.editing as any} submitLabel={cycleDialog.editing ? "Atualizar" : "Criar"} />
-      <CrudDialog open={lotDialog.open} onClose={() => setLotDialog({ open: false })} onSubmit={handleLotSubmit} title={lotDialog.editing ? "Editar Lote" : "Novo Lote"} fields={lotFields} initialData={lotDialog.editing as any} submitLabel={lotDialog.editing ? "Atualizar" : "Criar"} />
-      <DeleteDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} itemName={deleteTarget?.name || ""} />
+      <CrudDialog
+        open={dialog.open}
+        onClose={() => setDialog({ open: false, column: "aguardando" })}
+        onSubmit={handleSubmit}
+        title={dialog.editing ? "Editar Card" : "Novo Card"}
+        fields={cardFields}
+        initialData={dialog.editing as any}
+        submitLabel={dialog.editing ? "Atualizar" : "Criar"}
+      />
+      <DeleteDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && setCards((prev) => ({ ...prev, [deleteTarget.col]: prev[deleteTarget.col].filter((c) => c.id !== deleteTarget.id) }))}
+        itemName={deleteTarget?.name || ""}
+      />
     </div>
   );
 }

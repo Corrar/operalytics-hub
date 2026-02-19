@@ -1,237 +1,213 @@
 import { useState } from "react";
 import { ProgressBar } from "@/components/ProgressBar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Package, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Check, Plus, Pencil, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Plus, Pencil, Trash2, Package } from "lucide-react";
 import { CrudDialog, DeleteDialog, type FieldConfig } from "@/components/CrudDialog";
 
-interface Requisicao {
-  id: number;
-  item: string;
-  setor: string;
-  status: "pendente" | "aprovada" | "entregue";
-  quantidade: number;
+interface PedidoItem {
+  nome: string;
+  qtdSolicitada: number;
+  qtdReservada: number;
+  valorUnitario: number;
 }
 
-interface EstoqueItem {
+interface Pedido {
   id: number;
-  item: string;
-  atual: number;
-  minimo: number;
+  codigo: string;
+  cliente: string;
+  items: PedidoItem[];
 }
 
-let nextReqId = 6;
-let nextEstId = 6;
+let nextId = 4;
 
-const reqFields: FieldConfig[] = [
-  { name: "item", label: "Item", type: "text", required: true },
-  { name: "setor", label: "Setor", type: "select", options: [
-    { value: "Esteira", label: "Esteira" },
-    { value: "Lavadora", label: "Lavadora" },
-    { value: "Elétrica", label: "Elétrica" },
-    { value: "Flow", label: "Flow" },
-  ]},
-  { name: "quantidade", label: "Quantidade", type: "number", required: true },
-  { name: "status", label: "Status", type: "select", options: [
-    { value: "pendente", label: "Pendente" },
-    { value: "aprovada", label: "Aprovada" },
-    { value: "entregue", label: "Entregue" },
-  ]},
+const pedidoFields: FieldConfig[] = [
+  { name: "codigo", label: "Código do Pedido", type: "text", required: true },
+  { name: "cliente", label: "Cliente / Setor", type: "text", required: true },
+  { name: "item1_nome", label: "Item 1 - Nome", type: "text", required: true },
+  { name: "item1_qtdSolicitada", label: "Item 1 - Qtd Solicitada", type: "number", required: true },
+  { name: "item1_qtdReservada", label: "Item 1 - Qtd Reservada", type: "number" },
+  { name: "item1_valorUnitario", label: "Item 1 - Valor Unitário (R$)", type: "number", required: true },
 ];
 
-const estFields: FieldConfig[] = [
-  { name: "item", label: "Item", type: "text", required: true },
-  { name: "atual", label: "Quantidade Atual", type: "number", required: true },
-  { name: "minimo", label: "Quantidade Mínima", type: "number", required: true },
-];
+function parsePedidoData(data: Record<string, string | number>, existing?: Pedido): Pedido {
+  const items: PedidoItem[] = existing?.items ? [...existing.items] : [];
+  // Always update first item from form
+  items[0] = {
+    nome: String(data.item1_nome || ""),
+    qtdSolicitada: Number(data.item1_qtdSolicitada) || 0,
+    qtdReservada: Number(data.item1_qtdReservada) || 0,
+    valorUnitario: Number(data.item1_valorUnitario) || 0,
+  };
+  return {
+    id: existing?.id || nextId++,
+    codigo: String(data.codigo),
+    cliente: String(data.cliente),
+    items,
+  };
+}
 
-const statusColors: Record<string, string> = {
-  pendente: "bg-accent/20 text-accent-foreground",
-  aprovada: "bg-primary/10 text-primary",
-  entregue: "bg-success/10 text-success",
-};
+function pedidoToFormData(p: Pedido): Record<string, string | number> {
+  return {
+    codigo: p.codigo,
+    cliente: p.cliente,
+    item1_nome: p.items[0]?.nome || "",
+    item1_qtdSolicitada: p.items[0]?.qtdSolicitada || 0,
+    item1_qtdReservada: p.items[0]?.qtdReservada || 0,
+    item1_valorUnitario: p.items[0]?.valorUnitario || 0,
+  };
+}
 
 export default function AlmoxarifadoPanel() {
-  const [requisicoes, setRequisicoes] = useState<Requisicao[]>([
-    { id: 1, item: "Parafusos M6", setor: "Esteira", status: "pendente", quantidade: 200 },
-    { id: 2, item: "Óleo Lubrificante", setor: "Lavadora", status: "aprovada", quantidade: 10 },
-    { id: 3, item: "Fita Isolante", setor: "Elétrica", status: "entregue", quantidade: 50 },
-    { id: 4, item: "Rolamentos", setor: "Esteira", status: "pendente", quantidade: 8 },
-    { id: 5, item: "Detergente Industrial", setor: "Lavadora", status: "pendente", quantidade: 25 },
+  const [pedidos, setPedidos] = useState<Pedido[]>([
+    {
+      id: 1, codigo: "PED-001", cliente: "Esteira",
+      items: [
+        { nome: "Parafusos M6", qtdSolicitada: 200, qtdReservada: 150, valorUnitario: 0.50 },
+        { nome: "Rolamentos", qtdSolicitada: 8, qtdReservada: 8, valorUnitario: 45.00 },
+      ],
+    },
+    {
+      id: 2, codigo: "PED-002", cliente: "Lavadora",
+      items: [
+        { nome: "Óleo Lubrificante", qtdSolicitada: 10, qtdReservada: 10, valorUnitario: 32.00 },
+        { nome: "Detergente Industrial", qtdSolicitada: 25, qtdReservada: 12, valorUnitario: 18.50 },
+      ],
+    },
+    {
+      id: 3, codigo: "PED-003", cliente: "Elétrica",
+      items: [
+        { nome: "Fita Isolante", qtdSolicitada: 50, qtdReservada: 50, valorUnitario: 8.90 },
+        { nome: "Disjuntores 20A", qtdSolicitada: 10, qtdReservada: 3, valorUnitario: 25.00 },
+      ],
+    },
   ]);
-  const [estoque, setEstoque] = useState<EstoqueItem[]>([
-    { id: 1, item: "Parafusos M6", atual: 150, minimo: 200 },
-    { id: 2, item: "Óleo Lubrificante", atual: 45, minimo: 20 },
-    { id: 3, item: "Fita Isolante", atual: 12, minimo: 30 },
-    { id: 4, item: "Rolamentos", atual: 100, minimo: 50 },
-    { id: 5, item: "Detergente Industrial", atual: 8, minimo: 15 },
-  ]);
-  const [checkLog, setCheckLog] = useState<string[]>([]);
 
-  // Dialog state
-  const [reqDialog, setReqDialog] = useState<{ open: boolean; editing?: Requisicao }>({ open: false });
-  const [estDialog, setEstDialog] = useState<{ open: boolean; editing?: EstoqueItem }>({ open: false });
-  const [deleteTarget, setDeleteTarget] = useState<{ type: "req" | "est"; id: number; name: string } | null>(null);
+  const [dialog, setDialog] = useState<{ open: boolean; editing?: Pedido }>({ open: false });
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
 
-  const completedCount = requisicoes.filter((r) => r.status === "entregue").length;
-  const progress = requisicoes.length ? Math.round((completedCount / requisicoes.length) * 100) : 0;
-
-  const advanceStatus = (id: number) => {
-    setRequisicoes((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        if (r.status === "pendente") return { ...r, status: "aprovada" };
-        if (r.status === "aprovada") return { ...r, status: "entregue" };
-        return r;
-      })
-    );
-  };
-
-  const handleReqSubmit = (data: Record<string, string | number>) => {
-    if (reqDialog.editing) {
-      setRequisicoes((prev) => prev.map((r) => r.id === reqDialog.editing!.id ? { ...r, ...data } as Requisicao : r));
+  const handleSubmit = (data: Record<string, string | number>) => {
+    if (dialog.editing) {
+      setPedidos((prev) => prev.map((p) => p.id === dialog.editing!.id ? parsePedidoData(data, dialog.editing) : p));
     } else {
-      setRequisicoes((prev) => [...prev, { id: nextReqId++, status: "pendente", ...data } as Requisicao]);
-    }
-  };
-
-  const handleEstSubmit = (data: Record<string, string | number>) => {
-    if (estDialog.editing) {
-      setEstoque((prev) => prev.map((e) => e.id === estDialog.editing!.id ? { ...e, ...data } as EstoqueItem : e));
-    } else {
-      setEstoque((prev) => [...prev, { id: nextEstId++, ...data } as EstoqueItem]);
+      setPedidos((prev) => [...prev, parsePedidoData(data)]);
     }
   };
 
   const handleDelete = () => {
     if (!deleteTarget) return;
-    if (deleteTarget.type === "req") setRequisicoes((prev) => prev.filter((r) => r.id !== deleteTarget.id));
-    else setEstoque((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+    setPedidos((prev) => prev.filter((p) => p.id !== deleteTarget.id));
   };
+
+  // Global stats
+  const totalSolicitado = pedidos.reduce((s, p) => s + p.items.reduce((a, i) => a + i.qtdSolicitada * i.valorUnitario, 0), 0);
+  const totalSeparado = pedidos.reduce((s, p) => s + p.items.reduce((a, i) => a + i.qtdReservada * i.valorUnitario, 0), 0);
+  const globalProgress = totalSolicitado > 0 ? Math.round((totalSeparado / totalSolicitado) * 100) : 0;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Almoxarifado</h1>
-          <p className="text-sm text-muted-foreground">Estoque e Requisições</p>
+          <p className="text-sm text-muted-foreground">Separações de Pedidos</p>
         </div>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setDialog({ open: true })}>
+          <Plus className="w-3.5 h-3.5" /> Novo Pedido
+        </Button>
       </div>
 
-      <ProgressBar value={progress} showLabel size="lg" variant="primary" />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Requisições */}
-        <div className="bg-card rounded-2xl p-5 card-shadow space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <Package className="w-4 h-4 text-primary" /> Requisições
-            </h3>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setReqDialog({ open: true })}>
-              <Plus className="w-3.5 h-3.5" /> Nova
-            </Button>
+      {/* Summary bar */}
+      <div className="bg-card rounded-2xl p-5 card-shadow space-y-3">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Progresso Geral de Separação</span>
+          <div className="flex gap-4 text-xs">
+            <span className="text-muted-foreground">Total Pedido: <strong className="text-foreground">R$ {totalSolicitado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
+            <span className="text-muted-foreground">Total Separado: <strong className="text-success">R$ {totalSeparado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
           </div>
-          <div className="space-y-2">
-            {requisicoes.map((r) => (
-              <div key={r.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{r.item}</p>
-                  <p className="text-xs text-muted-foreground">{r.setor} • Qtd: {r.quantidade}</p>
+        </div>
+        <ProgressBar value={globalProgress} showLabel size="lg" variant={globalProgress === 100 ? "success" : "primary"} />
+      </div>
+
+      {/* Pedidos */}
+      <div className="space-y-4">
+        {pedidos.map((pedido) => {
+          const valorPedido = pedido.items.reduce((a, i) => a + i.qtdSolicitada * i.valorUnitario, 0);
+          const valorSeparado = pedido.items.reduce((a, i) => a + i.qtdReservada * i.valorUnitario, 0);
+          const totalQtdSol = pedido.items.reduce((a, i) => a + i.qtdSolicitada, 0);
+          const totalQtdRes = pedido.items.reduce((a, i) => a + i.qtdReservada, 0);
+          const progress = totalQtdSol > 0 ? Math.round((totalQtdRes / totalQtdSol) * 100) : 0;
+
+          return (
+            <div key={pedido.id} className="bg-card rounded-2xl p-5 card-shadow space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Package className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">{pedido.codigo}</h3>
+                    <p className="text-xs text-muted-foreground">{pedido.cliente}</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", statusColors[r.status])}>
-                    {r.status}
-                  </span>
-                  {r.status !== "entregue" && (
-                    <Button size="sm" variant="ghost" onClick={() => advanceStatus(r.id)} className="h-7 w-7 p-0">
-                      <Check className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-                  <Button size="sm" variant="ghost" onClick={() => setReqDialog({ open: true, editing: r })} className="h-7 w-7 p-0">
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setDialog({ open: true, editing: pedido })}>
                     <Pencil className="w-3.5 h-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setDeleteTarget({ type: "req", id: r.id, name: r.item })} className="h-7 w-7 p-0 text-destructive">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => setDeleteTarget({ id: pedido.id, name: pedido.codigo })}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Estoque */}
-        <div className="bg-card rounded-2xl p-5 card-shadow space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-accent" /> Nível de Estoque
-            </h3>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEstDialog({ open: true })}>
-              <Plus className="w-3.5 h-3.5" /> Novo
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {estoque.map((e) => {
-              const critico = e.atual < e.minimo;
-              return (
-                <div key={e.id} className={cn("flex items-center justify-between p-3 rounded-xl transition-colors", critico ? "bg-accent/5 border border-accent/20" : "bg-muted/50")}>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{e.item}</p>
-                    <p className="text-xs text-muted-foreground">Mín: {e.minimo} | Atual: {e.atual}</p>
-                    <ProgressBar value={Math.min((e.atual / e.minimo) * 100, 100)} size="sm" variant={critico ? "warning" : "success"} className="mt-1" />
-                  </div>
-                  <div className="flex items-center gap-1.5 ml-2">
-                    {critico && <AlertTriangle className="w-4 h-4 text-accent" />}
-                    <Button size="sm" variant="ghost" onClick={() => { setEstoque(prev => prev.map(x => x.id === e.id ? {...x, atual: x.atual + 10} : x)); setCheckLog(prev => [`✅ Check-in: ${e.item} (+10) — ${new Date().toLocaleTimeString()}`, ...prev]); }} className="h-7 w-7 p-0 text-success">
-                      <ArrowDownToLine className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => { setEstoque(prev => prev.map(x => x.id === e.id ? {...x, atual: Math.max(x.atual - 10, 0)} : x)); setCheckLog(prev => [`📦 Check-out: ${e.item} (-10) — ${new Date().toLocaleTimeString()}`, ...prev]); }} className="h-7 w-7 p-0 text-destructive">
-                      <ArrowUpFromLine className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEstDialog({ open: true, editing: e })} className="h-7 w-7 p-0">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setDeleteTarget({ type: "est", id: e.id, name: e.item })} className="h-7 w-7 p-0 text-destructive">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+              <ProgressBar value={progress} showLabel size="md" variant={progress === 100 ? "success" : progress >= 50 ? "primary" : "warning"} />
+
+              {/* Items table */}
+              <div className="rounded-xl overflow-hidden border border-border">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/50 text-muted-foreground">
+                      <th className="text-left py-2 px-3 font-medium">Item</th>
+                      <th className="text-right py-2 px-3 font-medium">Solicitada</th>
+                      <th className="text-right py-2 px-3 font-medium">Reservada</th>
+                      <th className="text-right py-2 px-3 font-medium">Valor Unit.</th>
+                      <th className="text-right py-2 px-3 font-medium">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedido.items.map((item, idx) => (
+                      <tr key={idx} className="border-t border-border/50">
+                        <td className="py-2 px-3 text-foreground font-medium">{item.nome}</td>
+                        <td className="py-2 px-3 text-right text-foreground">{item.qtdSolicitada}</td>
+                        <td className="py-2 px-3 text-right">
+                          <span className={item.qtdReservada >= item.qtdSolicitada ? "text-success" : "text-accent-foreground"}>
+                            {item.qtdReservada}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right text-muted-foreground">R$ {item.valorUnitario.toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right text-foreground">R$ {(item.qtdReservada * item.valorUnitario).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals row */}
+              <div className="flex justify-between text-xs px-1">
+                <span className="text-muted-foreground">Valor Total: <strong className="text-foreground">R$ {valorPedido.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
+                <span className="text-muted-foreground">Valor Separado: <strong className={valorSeparado >= valorPedido ? "text-success" : "text-primary"}>R$ {valorSeparado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Check Log */}
-      {checkLog.length > 0 && (
-        <div className="bg-card rounded-2xl p-5 card-shadow">
-          <h3 className="text-base font-semibold text-foreground mb-3">Registro de Movimentações</h3>
-          <div className="space-y-1 max-h-40 overflow-y-auto">
-            {checkLog.map((log, i) => (
-              <p key={i} className="text-xs text-muted-foreground font-mono">{log}</p>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Dialogs */}
       <CrudDialog
-        open={reqDialog.open}
-        onClose={() => setReqDialog({ open: false })}
-        onSubmit={handleReqSubmit}
-        title={reqDialog.editing ? "Editar Requisição" : "Nova Requisição"}
-        fields={reqFields}
-        initialData={reqDialog.editing as any}
-        submitLabel={reqDialog.editing ? "Atualizar" : "Criar"}
-      />
-      <CrudDialog
-        open={estDialog.open}
-        onClose={() => setEstDialog({ open: false })}
-        onSubmit={handleEstSubmit}
-        title={estDialog.editing ? "Editar Item de Estoque" : "Novo Item de Estoque"}
-        fields={estFields}
-        initialData={estDialog.editing as any}
-        submitLabel={estDialog.editing ? "Atualizar" : "Criar"}
+        open={dialog.open}
+        onClose={() => setDialog({ open: false })}
+        onSubmit={handleSubmit}
+        title={dialog.editing ? "Editar Pedido" : "Novo Pedido"}
+        fields={pedidoFields}
+        initialData={dialog.editing ? pedidoToFormData(dialog.editing) : undefined}
+        submitLabel={dialog.editing ? "Atualizar" : "Criar"}
       />
       <DeleteDialog
         open={!!deleteTarget}
